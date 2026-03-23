@@ -39,7 +39,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- WEBSOCKET CONNECTION MANAGER ---
+# --- UPGRADED WEBSOCKET MANAGER ---
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
@@ -51,31 +51,36 @@ class ConnectionManager:
     def disconnect(self, websocket: WebSocket):
         self.active_connections.remove(websocket)
 
+    # NEW: Send data to everyone connected (like the Web Dashboard)
+    async def broadcast(self, message: dict, sender: WebSocket):
+        for connection in self.active_connections:
+            if connection != sender: # Don't send it back to the phone that sent it
+                await connection.send_json(message)
+
 manager = ConnectionManager()
 
-# --- LIVE LOCATION TRACKING ROUTE ---
+# --- FLUTTER APP: LIVE LOCATION RECEIVER ---
 @app.websocket("/ws/location/{alert_id}")
 async def websocket_location_endpoint(websocket: WebSocket, alert_id: int):
-    await manager.connect(websocket)
-    print(f"\n🟢 LIVE TRACKING INITIATED FOR ALERT ID: {alert_id} 🟢")
+    # 1. Accept the connection directly from the Flutter App
+    await websocket.accept()
+    print(f"\n🟢 SOS TRACKING ACTIVE FOR APP ALERT ID: {alert_id} 🟢")
     
     try:
         while True:
-            # Wait for incoming GPS coordinates from the Flutter app
+            # 2. Receive the live GPS stream from the phone
             data = await websocket.receive_json()
             lat = data.get("latitude")
             lng = data.get("longitude")
             
-            # Print the live movement to the terminal
-            print(f"📍 [LIVE MOVEMENT - Alert {alert_id}]: Lat {lat}, Lng {lng}")
+            print(f"📍 [FLUTTER APP LIVE MOVEMENT]: Lat {lat}, Lng {lng}")
             
-            # (In the future, we can broadcast this to a web dashboard for authorities!)
+            # 3. This is where your backend logic happens!
+            # Example: save_to_database(alert_id, lat, lng)
+            # Example: check_if_in_danger_zone(lat, lng)
             
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
-        print(f"\n🔴 LIVE TRACKING DISCONNECTED FOR ALERT ID: {alert_id} 🔴\n")
-
-
+        print(f"\n🔴 FLUTTER APP DISCONNECTED ALERT ID: {alert_id} 🔴\n")
 # 4. Database Dependency
 def get_db():
     db = SessionLocal()
@@ -323,24 +328,21 @@ def log_location(
     return new_location
 
 # --- AI AUDIO ANALYSIS ENGINE ---
-def analyze_audio_for_distress(file_path: str, alert_id: int):
+# --- AI AUDIO ANALYSIS ENGINE ---
+def analyze_audio_for_distress(file_path: str, alert_id: int, contact_numbers: list):
     print(f"🤖 AI Analyzer starting on: {file_path}...")
     try:
-        # 1. Convert the web audio to raw WAV format for the AI
         audio = AudioSegment.from_file(file_path)
         wav_path = file_path.replace(".m4a", ".wav").replace(".webm", ".wav")
         audio.export(wav_path, format="wav")
         
-        # 2. Load the WAV file into the Speech Recognizer
         recognizer = sr.Recognizer()
         with sr.AudioFile(wav_path) as source:
             audio_data = recognizer.record(source)
             
-        # 3. Transcribe using Google's free AI speech-to-text
         transcription = recognizer.recognize_google(audio_data).lower()
         print(f"📝 AI Transcription: '{transcription}'")
         
-        # 4. Check for distress keywords
         danger_words = ["help", "stop", "please", "leave me", "no", "police", "bachao"]
         
         if any(word in transcription for word in danger_words):
@@ -348,45 +350,52 @@ def analyze_audio_for_distress(file_path: str, alert_id: int):
             print("CRITICAL: DISTRESS KEYWORDS DETECTED BY AI!")
             print("🚨"*10 + "\n")
             
-            # --- TWILIO TRIGGER ---
-            # We initialize Twilio and send a SECOND text message!
             client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
             message_body = f"⚠️ AI ALERT: Audio distress detected for Alert {alert_id}! Transcript: '{transcription}'"
             
-            client.messages.create(
-                body=message_body,
-                from_=TWILIO_PHONE_NUMBER,
-                to="+919876543210" # Replace with your VERIFIED emergency contact number!
-            )
-            print("✅ AI Escalation SMS Sent!")
-            
+            # LOOP THROUGH THE REAL CONTACTS!
+            for phone_number in contact_numbers:
+                try:
+                    client.messages.create(
+                        body=message_body,
+                        from_=TWILIO_PHONE_NUMBER,
+                        to=phone_number
+                    )
+                    print(f"✅ AI Escalation SMS Sent to {phone_number}!")
+                except Exception as e:
+                    print(f"❌ Twilio blocked SMS to {phone_number} (Is it verified on Twilio?): {e}")
         else:
-            print("✅ AI Analysis: No distress keywords found in audio.")
+            print("✅ AI Analysis: No distress keywords found.")
             
-    except sr.UnknownValueError:
-        print("🤖 AI Analysis: Could not understand the audio (too much noise/silence).")
     except Exception as e:
         print(f"🤖 AI Analysis Error: {e}")
 
 # --- AUDIO EVIDENCE RECEIVER ---
-# Make sure the evidence folder exists when the server starts
 os.makedirs("evidence", exist_ok=True)
 
 @app.post("/alerts/{alert_id}/audio")
-async def upload_audio_evidence(alert_id: int, file: UploadFile = File(...)):
-    # Create a unique filename using the alert ID
+async def upload_audio_evidence(
+    alert_id: int, 
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+):
     file_location = f"evidence/alert_{alert_id}_{file.filename}"
     
-    # Save the incoming audio file to the hard drive
     with open(file_location, "wb+") as file_object:
         shutil.copyfileobj(file.file, file_object)
         
-    print("\n" + "="*50)
-    print(f"🎙️ SECURE EVIDENCE RECEIVED 🎙️")
-    print(f"Alert ID: {alert_id}")
-    print(f"File saved to: {file_location}")
-    print("="*50 + "\n")
-    # Pass the saved file to the AI in a background thread so it doesn't freeze the app!
-    threading.Thread(target=analyze_audio_for_distress, args=(file_location, alert_id)).start()
+    print(f"🎙️ SECURE EVIDENCE RECEIVED: {file_location}")
+    
+    # 1. Look up the alert to find out WHO triggered it
+    alert = db.query(models.Alert).filter(models.Alert.id == alert_id).first()
+    
+    contact_numbers = []
+    if alert:
+        # 2. Find their contacts
+        contacts = db.query(models.Contact).filter(models.Contact.user_id == alert.user_id).all()
+        contact_numbers = [c.contact_phone for c in contacts]
+
+    # 3. Pass the phone numbers into the background thread
+    threading.Thread(target=analyze_audio_for_distress, args=(file_location, alert_id, contact_numbers)).start()
     
     return {"status": "success", "file_path": file_location}

@@ -23,6 +23,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _fetchContacts();
   }
 
+  // --- YOUR ORIGINAL LOGIC: FETCHING & CACHING ---
   Future<void> _fetchContacts() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
@@ -30,23 +31,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
     if (token != null) {
       final fetchedContacts = await ApiService.getContacts(token);
       
-      // 👇 THE NEW CACHE TRAP 👇
-      // Convert the server data to a string and lock it in the phone's local memory
+      // Update the Offline Cache for the SMS Fallback
       final String encodedContacts = jsonEncode(fetchedContacts);
       await prefs.setString('emergency_contacts_cache', encodedContacts);
-      // 👆 ------------------- 👆
 
       setState(() {
         contacts = fetchedContacts;
         isLoading = false;
       });
     } else {
-      setState(() {
-        isLoading = false; 
-      });
+      setState(() => isLoading = false);
     }
   }
 
+  // --- YOUR ORIGINAL LOGIC: ADDING CONTACTS ---
   Future<void> _showAddContactDialog() async {
     nameController.clear();
     phoneController.clear();
@@ -54,43 +52,41 @@ class _ContactsScreenState extends State<ContactsScreen> {
     await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E), // Dark theme
+        backgroundColor: const Color(0xFF1F2833), // Matching Home Screen Card color
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
-          side: const BorderSide(color: Colors.greenAccent, width: 1), // Green for adding
+          side: const BorderSide(color: Color(0xFF66FCF1), width: 1),
         ),
         title: const Text(
           "ADD GUARDIAN",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.2),
           textAlign: TextAlign.center,
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // NAME INPUT
             TextField(
               controller: nameController,
               style: const TextStyle(color: Colors.white),
               decoration: const InputDecoration(
-                hintText: "Name (e.g., Mom, Brother)",
-                hintStyle: TextStyle(color: Colors.grey),
+                labelText: "Name",
+                labelStyle: TextStyle(color: Colors.grey),
                 enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent)),
-                prefixIcon: Icon(Icons.person, color: Colors.grey),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF66FCF1))),
+                prefixIcon: Icon(Icons.person, color: Color(0xFF66FCF1)),
               ),
             ),
             const SizedBox(height: 20),
-            // PHONE INPUT
             TextField(
               controller: phoneController,
               keyboardType: TextInputType.phone,
               style: const TextStyle(color: Colors.white, fontSize: 18, letterSpacing: 2.0),
               decoration: const InputDecoration(
-                hintText: "+91 98765 43210",
-                hintStyle: TextStyle(color: Colors.grey),
+                labelText: "Phone Number",
+                labelStyle: TextStyle(color: Colors.grey),
                 enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey)),
-                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.greenAccent)),
-                prefixIcon: Icon(Icons.phone, color: Colors.grey),
+                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFF66FCF1))),
+                prefixIcon: Icon(Icons.phone, color: Color(0xFF66FCF1)),
               ),
             ),
           ],
@@ -101,7 +97,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF66FCF1)),
             onPressed: () async {
               if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty) {
                 final prefs = await SharedPreferences.getInstance();
@@ -116,41 +112,32 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   
                   if (success && mounted) {
                     Navigator.pop(context);
-                    _fetchContacts(); // Refresh the list from the server
+                    _fetchContacts(); 
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Contact Added!", style: TextStyle(color: Colors.white)), backgroundColor: Colors.green),
-                    );
-                  } else if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Failed to save contact."), backgroundColor: Colors.red),
+                      const SnackBar(content: Text("Guardian Locked In!"), backgroundColor: Color(0xFF45A29E)),
                     );
                   }
                 }
               }
             },
-            child: const Text("SAVE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text("SAVE", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
           )
         ],
       ),
     );
   }
 
-  // --- DELETE CONTACT LOGIC ---
+  // --- YOUR ORIGINAL LOGIC: DELETING ---
   Future<void> _deleteContact(int contactId) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     
     if (token != null) {
       final success = await ApiService.deleteContact(contactId, token);
-      
       if (success && mounted) {
-        _fetchContacts(); // Refresh the list from the server!
+        _fetchContacts();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Contact deleted."), backgroundColor: Colors.redAccent),
-        );
-      } else if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Failed to delete contact."), backgroundColor: Colors.red),
+          const SnackBar(content: Text("Contact removed."), backgroundColor: Color(0xFFFF3B30)),
         );
       }
     }
@@ -159,83 +146,89 @@ class _ContactsScreenState extends State<ContactsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E), // Deep navy background
+      backgroundColor: const Color(0xFF0B0C10), // The Home Screen Background
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          "EMERGENCY CONTACTS",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5),
-        ),
         centerTitle: true,
-        iconTheme: const IconThemeData(color: Colors.white), // Makes the back arrow white
+        title: const Text(
+          "GUARDIANS",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 2.0),
+        ),
+        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: isLoading 
-        ? const Center(child: CircularProgressIndicator(color: Colors.greenAccent))
-        : contacts.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.group_off_outlined, size: 80, color: Colors.white.withOpacity(0.2)),
-                  const SizedBox(height: 20),
-                  const Text(
-                    "No guardians added yet.",
-                    style: TextStyle(color: Colors.grey, fontSize: 18),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    "Tap + to add people you trust.",
-                    style: TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(20),
-              itemCount: contacts.length,
-              itemBuilder: (context, index) {
-                final contact = contacts[index];
-                return Card(
-                  color: Colors.white.withOpacity(0.05), // Dark card
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                  margin: const EdgeInsets.only(bottom: 15),
-                  child: ListTile(
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blueAccent.withOpacity(0.2),
-                      child: const Icon(Icons.person, color: Colors.blueAccent),
-                    ),
-                    title: Text(
-                      contact['contact_name'], // Mapped to your backend field
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-                    ),
-                    subtitle: Text(
-                      contact['contact_phone'], // Mapped to your backend field
-                      style: const TextStyle(color: Colors.white70, letterSpacing: 1.2),
-                    ),
-                    // 👇 THIS IS THE NEW TRASH CAN BUTTON 👇
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                      onPressed: () {
-                        // Assuming your backend returns the ID as 'id'
-                        // If your backend calls it something else like 'contact_id', change it here!
-                        _deleteContact(contact['id']); 
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-      // --- FLOATING ACTION BUTTON ---
+        ? const Center(child: CircularProgressIndicator(color: Color(0xFF66FCF1)))
+        : Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+            child: contacts.isEmpty
+              ? _buildEmptyState()
+              : ListView.builder(
+                  padding: const EdgeInsets.only(top: 20),
+                  itemCount: contacts.length,
+                  itemBuilder: (context, index) {
+                    final contact = contacts[index];
+                    return _buildGlassContactCard(contact);
+                  },
+                ),
+          ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showAddContactDialog,
-        backgroundColor: Colors.greenAccent,
-        icon: const Icon(Icons.add, color: Color(0xFF1A1A2E)),
-        label: const Text(
-          "ADD CONTACT",
-          style: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.bold),
+        backgroundColor: const Color(0xFF66FCF1),
+        icon: const Icon(Icons.add, color: Colors.black),
+        label: const Text("ADD GUARDIAN", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  // --- UI HELPER: THE GLASS CONTACT CARD ---
+  Widget _buildGlassContactCard(dynamic contact) {
+    String name = contact['contact_name'] ?? "Unknown";
+    String phone = contact['contact_phone'] ?? "No Number";
+    String initial = name.isNotEmpty ? name[0].toUpperCase() : "?";
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F2833).withOpacity(0.4), // Glass effect
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+      ),
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: Container(
+          width: 50, height: 50,
+          decoration: BoxDecoration(
+            color: const Color(0xFF66FCF1).withOpacity(0.1),
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFF66FCF1), width: 1.5),
+          ),
+          child: Center(
+            child: Text(initial, style: const TextStyle(color: Color(0xFF66FCF1), fontSize: 20, fontWeight: FontWeight.bold)),
+          ),
         ),
+        title: Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+        subtitle: Text(phone, style: const TextStyle(color: Colors.grey, fontSize: 14, letterSpacing: 1.1)),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline, color: Color(0xFFFF3B30)),
+          onPressed: () => _deleteContact(contact['id']),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.shield_outlined, size: 80, color: Colors.white.withOpacity(0.1)),
+          const SizedBox(height: 20),
+          const Text("No Guardians Yet", style: TextStyle(color: Colors.grey, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text("Add someone you trust for emergency alerts.", style: TextStyle(color: Colors.white38, fontSize: 14)),
+        ],
       ),
     );
   }

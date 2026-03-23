@@ -10,15 +10,26 @@ class HeatmapScreen extends StatefulWidget {
 }
 
 class _HeatmapScreenState extends State<HeatmapScreen> {
-  late GoogleMapController mapController;
+  GoogleMapController? mapController; // Changed to nullable
   Set<Circle> dangerZones = {};
   bool isLoading = true;
 
-  // Set the initial camera position (e.g., center of Meerut or your campus)
   final CameraPosition initialPosition = const CameraPosition(
-    target: LatLng(28.9845, 77.7064), // Defaulting to Meerut coordinates!
-    zoom: 13.0,
+    target: LatLng(28.9845, 77.7064), 
+    zoom: 14.0,
   );
+
+  // --- DARK MAP JSON STYLE ---
+  final String _darkMapStyle = '''
+  [
+    { "elementType": "geometry", "stylers": [ { "color": "#121418" } ] },
+    { "elementType": "labels.text.stroke", "stylers": [ { "color": "#121418" } ] },
+    { "elementType": "labels.text.fill", "stylers": [ { "color": "#746855" } ] },
+    { "featureType": "road", "elementType": "geometry", "stylers": [ { "color": "#1f2833" } ] },
+    { "featureType": "road", "elementType": "geometry.stroke", "stylers": [ { "color": "#1f2833" } ] },
+    { "featureType": "water", "elementType": "geometry", "stylers": [ { "color": "#0b0c10" } ] }
+  ]
+  ''';
 
   @override
   void initState() {
@@ -27,21 +38,18 @@ class _HeatmapScreenState extends State<HeatmapScreen> {
   }
 
   Future<void> _loadDangerZones() async {
-    // 1. Ask FastAPI for the historical SOS coordinates
     final data = await ApiService.getHeatmapData();
-    
     Set<Circle> newZones = {};
     int idCounter = 0;
 
-    // 2. Turn every SOS point into a glowing red danger zone on the map
     for (var point in data) {
       newZones.add(
         Circle(
           circleId: CircleId('zone_$idCounter'),
           center: LatLng(point['lat'], point['lng']),
-          radius: 200, // 200-meter danger radius
-          fillColor: Colors.redAccent.withOpacity(0.3), // Semi-transparent red
-          strokeColor: Colors.red,
+          radius: 150, 
+          fillColor: const Color(0xFFFF3B30).withOpacity(0.2), // Faded neon red
+          strokeColor: const Color(0xFFFF3B30).withOpacity(0.6),
           strokeWidth: 2,
         ),
       );
@@ -56,33 +64,79 @@ class _HeatmapScreenState extends State<HeatmapScreen> {
 
   void _onMapCreated(GoogleMapController controller) {
     mapController = controller;
-    // Optional: You can set a custom dark map style here later!
+    // APPLY THE DARK STYLE
+    controller.setMapStyle(_darkMapStyle);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E), // Your signature dark navy
+      backgroundColor: const Color(0xFF0B0C10),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          "SAFETY HEATMAP",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2.0),
-        ),
         centerTitle: true,
+        title: const Text(
+          "SAFETY RADAR",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 2.0),
+        ),
         iconTheme: const IconThemeData(color: Colors.white),
       ),
-      body: isLoading
-          ? const Center(child: CircularProgressIndicator(color: Colors.orangeAccent))
-          : GoogleMap(
-              onMapCreated: _onMapCreated,
-              initialCameraPosition: initialPosition,
-              circles: dangerZones, // This draws all our red blobs!
-              myLocationEnabled: true, // Shows the user's current blue dot
-              myLocationButtonEnabled: true,
-              zoomControlsEnabled: false,
+      extendBodyBehindAppBar: true,
+      body: Stack(
+        children: [
+          isLoading
+              ? const Center(child: CircularProgressIndicator(color: Color(0xFF66FCF1)))
+              : GoogleMap(
+                  onMapCreated: _onMapCreated,
+                  initialCameraPosition: initialPosition,
+                  circles: dangerZones,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: false, // We'll use a custom button
+                  zoomControlsEnabled: false,
+                  mapType: MapType.normal,
+                ),
+          
+          // --- LEGEND OVERLAY ---
+          Positioned(
+            bottom: 30,
+            left: 20,
+            right: 20,
+            child: Container(
+              padding: const EdgeInsets.all(15),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F2833).withOpacity(0.9),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: Colors.white.withOpacity(0.1)),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.4), blurRadius: 10)],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 20, height: 20,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF3B30).withOpacity(0.5),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFFFF3B30)),
+                    ),
+                  ),
+                  const SizedBox(width: 15),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text("High-Risk Zone", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                        Text("Historical SOS events detected here.", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      ],
+                    ),
+                  )
+                ],
+              ),
             ),
+          ),
+        ],
+      ),
     );
   }
 }

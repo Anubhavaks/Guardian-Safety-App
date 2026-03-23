@@ -15,6 +15,7 @@ import 'package:background_sms/background_sms.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'fake_call_screen.dart';
 import 'heatmap_screen.dart';
+import 'analytics_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -464,237 +465,244 @@ class _HomeScreenState extends State<HomeScreen> {
   }
   // --- TRIGGER THE FAKE CALL ---
   void _scheduleFakeCall() {
-    // Show a stealthy confirmation
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text("Fake call scheduled in 10 seconds. Act natural."), 
-        backgroundColor: Colors.grey,
-        duration: Duration(seconds: 3),
-      ),
-    );
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text("Incoming call in 10 seconds..."), 
+      backgroundColor: Colors.blueGrey,
+    ),
+  );
 
-    // Wait exactly 10 seconds, then push the full-screen call UI
-    Future.delayed(const Duration(seconds: 10), () {
-      if (mounted) {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const FakeCallScreen(callerName: "Dad")),
-        );
-      }
-    });
-  }
+  Future.delayed(const Duration(seconds: 10), () {
+    // CRITICAL: Check if the screen is still "mounted" before navigating
+    if (mounted && !isEmergencyActive) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const FakeCallScreen(callerName: "Dad")),
+      );
+    }
+  });
+}
 
-  @override
+@override
   Widget build(BuildContext context) {
-    // A sleek, dark theme makes the red SOS button pop!
     return Scaffold(
-      backgroundColor: const Color(0xFF1A1A2E), // Deep navy/dark background
+      backgroundColor: const Color(0xFF0B0C10), // The deep dark background
       appBar: AppBar(
-        title: const Text(
-          'GUARDIAN',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            letterSpacing: 2.0,
-            color: Colors.white,
-          ),
-        ),
         backgroundColor: Colors.transparent,
         elevation: 0,
-        centerTitle: true,
-        actions: [
-          // THE NEW HEATMAP BUTTON
-          IconButton(
-            icon: const Icon(Icons.map_outlined, color: Colors.orangeAccent, size: 28),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const HeatmapScreen()),
-              );
-            },
-          ),
-          // THE FAKE CALL BUTTON
-          IconButton(
-            icon: const Icon(Icons.phone_in_talk_outlined, color: Colors.white, size: 28),
-            onPressed: () {
-              if (!isEmergencyActive) _scheduleFakeCall();
-            },
-          ),
-          // THE NEW TIMER BUTTON
-          IconButton(
-            icon: const Icon(Icons.timer_outlined, color: Colors.white, size: 28),
-            onPressed: () {
-              // Open the setup dialog instead of hardcoding 1 minute!
-              if (!isEmergencyActive) {
-                _showTimerSetupDialog(); 
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.group_add_outlined, color: Colors.white, size: 28),
-            onPressed: () {
-              Navigator.push(
-                context, 
-                MaterialPageRoute(builder: (context) => const ContactsScreen()),
-              );
-            },
-          ),
-          const SizedBox(width: 10),
-        ],
+        title: Row(
+          children: [
+            const Icon(Icons.shield_moon, color: Color(0xFF66FCF1), size: 28),
+            const SizedBox(width: 10),
+            const Text(
+              "GuardianAI",
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 24, letterSpacing: 1.2),
+            ),
+          ],
+        ),
       ),
       body: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // --- STATUS INDICATOR ---
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              decoration: BoxDecoration(
-                color: isEmergencyActive 
-                    ? Colors.redAccent.withOpacity(0.2) 
-                    : Colors.greenAccent.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(30),
-                border: Border.all(
-                  color: isEmergencyActive ? Colors.redAccent : Colors.greenAccent,
-                  width: 1.5,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+             // --- 1. LIVE SYSTEM STATUS CARD ---
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1F2833).withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
                 ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    isEmergencyActive ? Icons.warning_amber_rounded : Icons.shield_outlined,
-                    color: isEmergencyActive ? Colors.redAccent : Colors.greenAccent,
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    isEmergencyActive ? "EMERGENCY ACTIVE" : "SYSTEM STANDBY",
-                    style: TextStyle(
-                      color: isEmergencyActive ? Colors.redAccent : Colors.greenAccent,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.2,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            // --- THE AUTO-ALERT TIMER UI ---
-            if (_isTimerActive && !isEmergencyActive)
-              Padding(
-                padding: const EdgeInsets.only(top: 20.0),
                 child: Column(
                   children: [
-                    Text(
-                      "AUTO-SOS IN: ${_timeRemaining ~/ 60}:${(_timeRemaining % 60).toString().padLeft(2, '0')}",
-                      style: const TextStyle(
-                        color: Colors.orangeAccent,
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 2.0,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ElevatedButton.icon(
-                      onPressed: _cancelSafetyTimer,
-                      icon: const Icon(Icons.check_circle, color: Colors.white),
-                      label: const Text("I'M SAFE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            
-            const Spacer(),
-
-            // --- THE HERO SOS BUTTON ---
-            GestureDetector(
-              onTap: isEmergencyActive ? null : _activateSOS,
-              child: Container(
-                width: 220,
-                height: 220,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: isEmergencyActive
-                        ? [Colors.grey.shade800, Colors.grey.shade900] // Disabled state
-                        : [const Color(0xFFFF416C), const Color(0xFFFF4B2B)], // Vibrant Red Gradient
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: isEmergencyActive 
-                          ? Colors.transparent 
-                          : const Color(0xFFFF4B2B).withOpacity(0.5),
-                      blurRadius: 30,
-                      spreadRadius: 10,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Center(
-                  child: Text(
-                    isEmergencyActive ? "DISPATCHED" : "SOS",
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 48,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 3.0,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 40),
-
-            // --- LIVE FEEDBACK CARDS (Only shows when SOS is active) ---
-            if (isEmergencyActive)
-              Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 30),
-                    child: Column(
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        _buildFeedbackRow(Icons.location_on, "Transmitting Live GPS", Colors.blueAccent),
-                        const SizedBox(height: 15),
-                        _buildFeedbackRow(Icons.mic, "Recording Secure Audio", Colors.orangeAccent),
-                        const SizedBox(height: 15),
-                        _buildFeedbackRow(Icons.sms, "Alerting Emergency Contacts", Colors.greenAccent),
+                        const Text("System Status", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                        _buildStatusIndicator(),
+                      ],
+                    ),
+                    
+                    // 👇 NEW: THE LIVE COUNTDOWN ROW 👇
+                    // 👇 THE UPGRADED COUNTDOWN ROW 👇
+                    if (_isTimerActive) ...[
+                      const Divider(color: Colors.white10, height: 30),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.timer_outlined, color: Color(0xFF66FCF1), size: 18),
+                              const SizedBox(width: 8),
+                              Text(
+                                _formatDuration(_timeRemaining),
+                                style: const TextStyle(
+                                  color: Color(0xFF66FCF1), 
+                                  fontWeight: FontWeight.bold, 
+                                  fontSize: 18,
+                                  fontFamily: 'monospace', 
+                                ),
+                              ),
+                            ],
+                          ),
+                          // THE NEW "I'M SAFE" CANCEL BUTTON
+                          TextButton.icon(
+                            onPressed: _cancelSafetyTimer, // This calls your existing cancel function!
+                            icon: const Icon(Icons.check_circle, color: Color(0xFF4CD964), size: 18),
+                            label: const Text(
+                              "I'M SAFE", 
+                              style: TextStyle(color: Color(0xFF4CD964), fontWeight: FontWeight.bold)
+                            ),
+                          )
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              
+              const SizedBox(height: 50),
+
+              // --- 2. THE HERO SOS BUTTON ---
+              GestureDetector(
+                onTap: () {
+  if (!isEmergencyActive) {
+    // Start the emergency
+    _activateSOS();
+  } else {
+    // FIXED: This MUST call the PIN dialog to turn it off
+    _showDismantleDialog();
+  }
+},
+                child: Container(
+                  width: 220,
+                  height: 220,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: isEmergencyActive ? Colors.transparent : const Color(0xFFFF3B30),
+                    border: isEmergencyActive ? Border.all(color: const Color(0xFFFF3B30), width: 4) : null,
+                    boxShadow: isEmergencyActive ? [] : [
+                      BoxShadow(
+                        color: const Color(0xFFFF3B30).withOpacity(0.6),
+                        blurRadius: 60,
+                        spreadRadius: 15,
+                      )
+                    ],
+                  ),
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          isEmergencyActive ? Icons.lock_outline : Icons.power_settings_new, 
+                          color: isEmergencyActive ? const Color(0xFFFF3B30) : Colors.white, 
+                          size: 60
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          isEmergencyActive ? "DISARM" : "SOS",
+                          style: TextStyle(
+                            color: isEmergencyActive ? const Color(0xFFFF3B30) : Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 2.0,
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  
-                  const SizedBox(height: 40), // Space before the button
-                  
-                  // --- DISMANTLE BUTTON ---
-                  // --- DISMANTLE BUTTON ---
-                  TextButton.icon(
-                    onPressed: _showDismantleDialog, // <--- JUST CALL THE NEW FUNCTION HERE!
-                    icon: const Icon(Icons.cancel_outlined, color: Colors.white70),
-                    label: const Text(
-                      "DISMANTLE SOS",
-                      style: TextStyle(
-                        color: Colors.white70, 
-                        letterSpacing: 1.5, 
-                        fontWeight: FontWeight.bold
+                ),
+              ),
+
+              const SizedBox(height: 60),
+
+// --- 3. ENTERPRISE FEATURE GRID ---
+              Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildFeatureCard(
+                        title: "Heatmap",
+                        icon: Icons.map_outlined,
+                        color: const Color(0xFF66FCF1),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const HeatmapScreen()));
+                        },
                       ),
-                    ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-                      backgroundColor: Colors.white.withOpacity(0.1), 
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
+                      _buildFeatureCard(
+                        title: "Fake Call",
+                        icon: Icons.phone_in_talk,
+                        color: const Color(0xFF9D4EDD), 
+                        onTap: () {
+                          if (!isEmergencyActive) _scheduleFakeCall();
+                        },
                       ),
-                    ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      _buildFeatureCard(
+                        title: "Contacts", // FIXED: Changed title from Timer to Contacts
+                        icon: Icons.shield_outlined, // FIXED: Icon for Contacts
+                        color: const Color(0xFFFF9500), 
+                        onTap: () {
+                          // FIXED: Now navigates to ContactsScreen
+                          Navigator.push(context, MaterialPageRoute(builder: (context) => const ContactsScreen()));
+                        },
+                      ),
+                      _buildFeatureCard(
+                        title: "Timer",
+                        icon: Icons.timer,
+                        color: const Color(0xFFC5C6C7), 
+                        onTap: () {
+                          // FIXED: Now triggers your orange Setup Dialog
+                          _showTimerSetupDialog();
+                        },
+                      ),
+                    ],
                   ),
                 ],
               ),
+              const SizedBox(height: 30),
 
-            const Spacer(),
-          ],
+              // --- 4. SYSTEM ANALYTICS BUTTON (NEW) ---
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const AnalyticsScreen()));
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1F2833).withOpacity(0.4),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFF66FCF1).withOpacity(0.3), width: 1),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.analytics_outlined, color: Color(0xFF66FCF1)),
+                      SizedBox(width: 10),
+                      Text(
+                        "SYSTEM ANALYTICS & ARCHITECTURE",
+                        style: TextStyle(
+                          color: Color(0xFF66FCF1), 
+                          fontWeight: FontWeight.bold, 
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 40), // Give it some breathing room at the bottom
+            ],
+          ),
         ),
       ),
     );
@@ -715,6 +723,322 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ],
+    );
+  }
+  // --- GLASSMORPHISM CARD WIDGET ---
+  Widget _buildFeatureCard({required String title, required IconData icon, required Color color, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.42,
+        padding: const EdgeInsets.symmetric(vertical: 25, horizontal: 15),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1F2833).withOpacity(0.4),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 36),
+            const SizedBox(height: 15),
+            Text(
+              title,
+              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  // --- HELPER 1: FORMAT SECONDS TO MM:SS ---
+  String _formatDuration(int totalSeconds) {
+    int minutes = totalSeconds ~/ 60;
+    int seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  // --- HELPER 2: SYSTEM STATUS INDICATOR ---
+  Widget _buildStatusIndicator() {
+    return Row(
+      children: [
+        Container(
+          width: 10, height: 10,
+          decoration: BoxDecoration(
+            color: isEmergencyActive ? const Color(0xFFFF3B30) : const Color(0xFF66FCF1),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: isEmergencyActive ? const Color(0xFFFF3B30) : const Color(0xFF66FCF1), 
+                blurRadius: 10
+              )
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          isEmergencyActive ? "EMERGENCY ACTIVE" : "ARMED & READY", 
+          style: TextStyle(
+            color: isEmergencyActive ? const Color(0xFFFF3B30) : const Color(0xFF66FCF1), 
+            fontWeight: FontWeight.w800,
+            fontSize: 12,
+            letterSpacing: 1.5
+          )
+        ),
+      ],
+    );
+  }
+}
+// 👇 PASTE THIS AT THE VERY BOTTOM OF YOUR FILE 👇
+
+class TimerScreen extends StatefulWidget {
+  const TimerScreen({super.key});
+
+  @override
+  State<TimerScreen> createState() => _TimerScreenState();
+}
+
+class _TimerScreenState extends State<TimerScreen> {
+  int selectedMinutes = 15;
+  int remainingSeconds = 0;
+  Timer? _countdownTimer;
+  bool isRunning = false;
+
+  void _startTimer() {
+    setState(() {
+      remainingSeconds = selectedMinutes * 60;
+      isRunning = true;
+    });
+
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (remainingSeconds > 0) {
+        setState(() => remainingSeconds--);
+      } else {
+        _countdownTimer?.cancel();
+        // TRIGGER YOUR ACTUAL SOS HERE!
+        print("🚨 DEAD MAN'S SWITCH TRIGGERED 🚨");
+        setState(() => isRunning = false);
+      }
+    });
+  }
+
+  void _stopTimer() {
+    _countdownTimer?.cancel();
+    setState(() => isRunning = false);
+  }
+
+  String get _formattedTime {
+    int m = remainingSeconds ~/ 60;
+    int s = remainingSeconds % 60;
+    return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _countdownTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0C10),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent, elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Dead Man's Switch", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            Container(
+              width: double.infinity, padding: const EdgeInsets.all(25),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1F2833).withOpacity(0.4),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+              ),
+              child: Column(
+                children: [
+                  isRunning 
+                    ? Text(_formattedTime, style: const TextStyle(color: Color(0xFF66FCF1), fontSize: 60, fontWeight: FontWeight.bold, fontFamily: 'monospace'))
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, color: Colors.white, size: 30),
+                            onPressed: () => setState(() { if (selectedMinutes > 1) selectedMinutes--; }),
+                          ),
+                          Text("$selectedMinutes min", style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold)),
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline, color: Colors.white, size: 30),
+                            onPressed: () => setState(() { selectedMinutes++; }),
+                          ),
+                        ],
+                      ),
+                  const SizedBox(height: 30),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isRunning ? const Color(0xFFFF3B30) : const Color(0xFF66FCF1),
+                      foregroundColor: isRunning ? Colors.white : Colors.black,
+                      minimumSize: const Size(double.infinity, 50),
+                    ),
+                    onPressed: isRunning ? _stopTimer : _startTimer,
+                    child: Text(isRunning ? "CANCEL TIMER" : "START TIMER", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  )
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+// 👇 PASTE THIS RIGHT BELOW YOUR TIMERSCREEN CLASS 👇
+
+// 👇 REPLACE YOUR OLD CONTACTSSCREEN WITH THIS 👇
+class ContactsScreen extends StatefulWidget {
+  const ContactsScreen({super.key});
+
+  @override
+  State<ContactsScreen> createState() => _ContactsScreenState();
+}
+
+class _ContactsScreenState extends State<ContactsScreen> {
+  // Your live list of contacts
+  List<Map<String, String>> savedContacts = [
+    {"name": "Mom", "phone": "+91 98765-XXXXX", "initial": "M", "color": "0xFF66FCF1"},
+    {"name": "Dad", "phone": "+91 87654-XXXXX", "initial": "D", "color": "0xFFFF9500"},
+  ];
+
+  void _showAddContactDialog() {
+    TextEditingController nameController = TextEditingController();
+    TextEditingController phoneController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1F2833),
+        title: const Text("Add Contact", style: TextStyle(color: Colors.white)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(labelText: "Name", labelStyle: TextStyle(color: Colors.grey)),
+            ),
+            TextField(
+              controller: phoneController,
+              style: const TextStyle(color: Colors.white),
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(labelText: "Phone Number", labelStyle: TextStyle(color: Colors.grey)),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel", style: TextStyle(color: Colors.grey))),
+          TextButton(
+            onPressed: () {
+              if (nameController.text.isNotEmpty && phoneController.text.isNotEmpty) {
+                setState(() {
+                  savedContacts.add({
+                    "name": nameController.text,
+                    "phone": phoneController.text,
+                    "initial": nameController.text[0].toUpperCase(),
+                    "color": "0xFF9D4EDD", // Purple for new contacts
+                  });
+                });
+                Navigator.pop(context);
+              }
+            }, 
+            child: const Text("Save", style: TextStyle(color: Color(0xFF66FCF1)))
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0B0C10),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent, elevation: 0, iconTheme: const IconThemeData(color: Colors.white),
+        title: const Text("Emergency Contacts", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          children: [
+            // Dynamically generate the list!
+            ...savedContacts.map((contact) => Padding(
+              padding: const EdgeInsets.only(bottom: 15.0),
+              child: _buildContactCard(
+                contact["name"]!, 
+                contact["phone"]!, 
+                contact["initial"]!, 
+                Color(int.parse(contact["color"]!))
+              ),
+            )),
+            
+            const SizedBox(height: 15),
+            
+            // The Add Contact Button
+            GestureDetector(
+              onTap: _showAddContactDialog,
+              child: Container(
+                width: double.infinity, padding: const EdgeInsets.symmetric(vertical: 15),
+                decoration: BoxDecoration(
+                  color: Colors.transparent, borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF66FCF1).withOpacity(0.5)),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.person_add_alt_1, color: Color(0xFF66FCF1)),
+                    SizedBox(width: 10),
+                    Text("Add Trusted Contact", style: TextStyle(color: Color(0xFF66FCF1), fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContactCard(String name, String phone, String initial, Color accentColor) {
+    return Container(
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1F2833).withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.05), width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 50, height: 50,
+            decoration: BoxDecoration(color: accentColor.withOpacity(0.2), shape: BoxShape.circle, border: Border.all(color: accentColor, width: 2)),
+            child: Center(child: Text(initial, style: TextStyle(color: accentColor, fontSize: 20, fontWeight: FontWeight.bold))),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(phone, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+              ],
+            ),
+          ),
+          Icon(Icons.star, color: accentColor, size: 24),
+        ],
+      ),
     );
   }
 }
